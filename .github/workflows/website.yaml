@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,3 +26,4 @@ jobs:
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           folder: out # The folder the action should deploy.
+          token: 
