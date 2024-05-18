@@ -17,6 +17,7 @@ In order of newness, the following features have been added to &koka;:
 Qualified names and Implicits are two new features of Koka. 
 
 Multiple dispatch style overloading (overloading that considers all the types of the arguments) has existed in Koka for a while, but was problematic for a few reasons:
+
 - There was no way to disambiguate between functions with the same name if they were both brought into the same scope and operated on the same parameters, even if the return type was different.
 - There was no good way to overload constants (i.e. zero for both types `int` and `float64`)
 
@@ -54,7 +55,8 @@ Note the `?` prefixing the show parameter. This marks this parameter as being in
 
 Of course we can also define more specialized versions of `show` for specific lists, and they can be used when in scope.
 ```koka
-// a special show for characters -- when resolving an implicit parameter `list/show` the
+// A special show for characters
+// when resolving an implicit parameter `list/show` the
 // `chars/show` will be preferred over `list/show` as the chain is shorter
 fun chars/show( cs : list<char> ) : string
   "\"" ++ cs.map(string).join ++ "\""
@@ -68,6 +70,8 @@ l2.show
 l2.list/show(?show=fn(l) l.list/show(?show=int/show))
 // with all of the implicit parameters eta expanded and filled in explicitly.
 ```
+VSCode will show you the inferred implicits and qualified identifiers when you press `Ctrl+Alt`.
+
 As a consequence of this design, implicits have no runtime machinery. We plan on measuring the impact on code size and deduplicating implicits in the future (but this is not implemented yet).
 
 Implicits are purely a compile-time feature, and are resolved during type inference at the same time as overloading is resolved. 
