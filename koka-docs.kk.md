@@ -61,6 +61,12 @@ This website has some updates to Koka's documentation with more information abou
 
 [INCLUDE=less-known-features.kk.md]
 
+[INCLUDE=best-practices.kk.md]
+
+[INCLUDE=tips-for-debugging.kk.md]
+
+[INCLUDE=known-rough-edges.kk.md]
+
 [INCLUDE=other-doc-updates.kk.md]
 
 
