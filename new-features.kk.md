@@ -101,14 +101,14 @@ When proceeding to resolve implicits
 - If the compiler cannot find a corresponding definition with the correct type it will report an error
 
 As such, overuse of static overloading or deeply nesting implicits is bad practice for the following reasons: 
-(1) It makes implicit resolution more expensive
-(2) It can make code harder to read and understand
-(3) It can result in ambiguities in the middle of an implicit chain which you have to expand manually
+1. It makes implicit resolution more expensive
+2. It can make code harder to read and understand
+3. It can result in ambiguities in the middle of an implicit chain which you have to expand manually
 
 It is best practice to:
-(1) Only overload unambiguously (i.e. with different types)
-(2) Prefer overloading where the first argument type can distinguish the definitions completely
-(3) Avoid deeply nesting generic types
+1. Only overload unambiguously (i.e. with different types)
+2. Prefer overloading where the first argument type can distinguish the definitions completely
+3. Avoid deeply nesting generic types
 
 If you absolutely need to create an ambiguous overloaded definition that is likely to be used in a nested implicit
 there are ways to mitigate issue number (3), which has something to do with best practice (3).

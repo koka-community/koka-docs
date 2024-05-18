@@ -122,10 +122,10 @@ The various function modifiers to guarantee certain properties related to refere
 ### Divergence Inference
 Koka infers the divergence effects in four particular situations:
 
-(1) When a function is self-recursive
-(2) When functions call each other in a mutually recursive way.
-(3) When a heap allocated reference is read, but it's value also could reference the same heap, (which could diverge due to self referential functions).
-(4) Where handlers could cause divergence through their operations involving functions that reference the effect itself.
+1. When a function is self-recursive
+2. When functions call each other in a mutually recursive way.
+3. When a heap allocated reference is read, but it's value also could reference the same heap, (which could diverge due to self referential functions).
+4. Where handlers could cause divergence through their operations involving functions that reference the effect itself.
 
 Of these only the first (self-recursion) can be eliminated by the compiler automatically by
 using an inductive argument, and realizing that the discriminant will always get smaller.
