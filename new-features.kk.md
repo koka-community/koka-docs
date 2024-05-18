@@ -53,10 +53,17 @@ fun list/show(l: list<a>, ?show: (a) -> string): string
 ```
 Note the `?` prefixing the show parameter. This marks this parameter as being inferred using the name `show` at the application site.
 
+If you need more than one implicit resolved by the same name but with different types you can make implicit parameters locally qualified.
+```koka
+fun tuple/show(l: (a,b), ?a/show: (a) -> string, ?b/show: (b) -> string): string
+  match l
+    (a, b) -> "(" ++ a.show ++ ", " ++ b.show ++ ")"
+```
+
 Of course we can also define more specialized versions of `show` for specific lists, and they can be used when in scope.
 ```koka
 // A special show for characters
-// when resolving an implicit parameter `list/show` the
+//   When resolving an implicit parameter `?show` the
 // `chars/show` will be preferred over `list/show` as the chain is shorter
 fun chars/show( cs : list<char> ) : string
   "\"" ++ cs.map(string).join ++ "\""
@@ -188,91 +195,4 @@ fun file(fname : string, action : forall<s> file<s> -> <scope<s>|e> a ) : e a
 When creating the file the function `file` quantifies the `action` function by a polymorphic scope `s`, and connects that to the scope of the `file` instance passed to the `action`. Each action is guaranteed to not escape the scope of the action method due to the scope polymorphism. Scope types which are recognized by the `::S` kind annotation are not limited to just effect handlers, and can be used with other variables. See the [``samples/named-handlers``][named-handlers] directory on github or in your Koka installation for more complex examples of both named handlers and scoped effects and types.
 
 [named-handlers]: https://github.com/koka-lang/koka/tree/master/samples/named-handlers {target='_top'}
-
-
-## Less Documented
-
-The following keywords or features are less well-known or documented in Koka:
-
-### Type Qualifiers and Features
-
-#### Abstract Types
-`abstract` in front of a type declaration will make the type non-constructible outside the current module. 
-In addition it will not auto create the copy function or value accessors. 
-This is used in the standard libraries for external types defined by the runtime, as well as types such as `sslice` which has specific guarantees about relations between its fields that it needs to take serious responsibility for to avoid undefined behavior such as segfaults.
-
-#### Coinductive Types
-Coinductively defined types have no special aspect to them at this point as far as I know other than to be reserved for functional completeness.
-
-#### Extensible Types
-Exensible types allow you to add constructors to a type from outside the type's definition.
-It is used for example in the standard library's `exception-info` type, which allows you to add additional information to an exception.
-
-The syntax is as follows:
-```koka
-open type mytype
-  Constr1(a: int)
-  Constr2(b: string)
-
-extend type mytype
-  Constr3(c: float64)
-```
-
-Note that for extensible types, the extended type must have public visibility `pub` or you will run into a known bug. Also note that pattern matching
-will no longer be exhaustive so you must have `exn` in the effect row when pattern matching on an extensible type if there is no sensible default or catch all case.
-
-There is still work to do to make extensible types work well with the rest of the language, in particular with implicits and overloading.
-
-### Parameters
-All parameters to top level functions must be named.
-As such, arguments can be passed named or in order.
-
-Additionally parameters can be marked as borrowed by prefixing the name with the caret `^`.
-
-This can be useful to avoid unnecessary reference counting on parameters that you know will be live for the duration of the function call (such as higher order function parameters, including implicits).
-However, it will mean that the parameter including any variables captured under a lambda will not be freed as early as it could.
-For data structures that will be destructed using a match statement, it is almost always better to rely on the default owned semantics, which will let Koka reuse the memory in place.
-
-
-
-### Return Statement
-
-
-### Divergence Inference
-
-
-### Function Modifiers
-
-### Vectors
-
-### Implicits Versus Effects
-
-### Matching
-
-### Linear Effects
-
-## Best Practices
-- utf8
-- tests
-- vectors
-- implicits versus effects
-- formatting
-
-## Some Rough Edges
-
-### Partial Type Checking
-
-### Standard Library
-
-#### Documentation
-
-#### Testing Library
-
-#### Red Black Tree
-
-#### List / Ssslice
-
-#### Tuple accessors on parameters
-
-### Conditional Effects
 

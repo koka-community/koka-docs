@@ -57,6 +57,8 @@ This website has some updates to Koka's documentation with more information abou
 
 [INCLUDE=new-features.kk.md]
 
+[INCLUDE=less-documented-features.kk.md]
+
 [INCLUDE=less-known-features.kk.md]
 
 [INCLUDE=other-doc-updates.kk.md]
