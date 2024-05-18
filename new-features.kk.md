@@ -12,9 +12,126 @@ import std/num/random
 
 In order of newness, the following features have been added to &koka;:
 
-### Implicits and Overloading { # sec-implicits; }
+### Qualified Names and Overloading { # sec-qualified; }
 
-TODO: Explain implicits and overloading
+Qualified names and Implicits are two new features of Koka. 
+
+Multiple dispatch style overloading (overloading that considers all the types of the arguments) has existed in Koka for a while, but was problematic for a few reasons:
+- There was no way to disambiguate between functions with the same name if they were both brought into the same scope and operated on the same parameters, even if the return type was different.
+- There was no good way to overload constants (i.e. zero for both types `int` and `float64`)
+
+Recently we added a new feature called locally qualified names. 
+Using qualifiers we can now precisely disambiguate when we have multiple functions with the same name.
+For example we can define two mapping functions for lists, and specialize them to work on different types of lists:
+```koka
+fun int/map(xs: list<int>, f: int -> int): list<int> ...
+fun float64/map(xs: list<float64>, f: float64 -> float64): list<float64> ...
+```
+and these can coexist peacefully with the normal definition for map
+```koka
+fun list/map(l: list<t>, f: t -> r): list<r> ...
+```
+
+Additionally all functions are also qualified by their module path so that you can distinguish between different
+functions with the same name from different modules even if they are not locally qualified.
+
+We split the standard library into smaller modules to avoid adding too many local qualifiers.
+This seems to work well in practice, and we recommend putting functions that are defined with the same first parameter type in a module together.
+
+### Implicits { # sec-implicits; }
+Implicit arguments are Koka's answer to type classes or ad-hoc polymorphism. 
+While several languages have implicit arguments, (e.g. Scala, Coq, Lean), most of them occur in proof systems, and are different than Koka's approach.
+
+In particular, Koka's implicits are not resolved solely by finding an appropriate term of the matching type, but rather by finding a term matching the unqualified name of the parameter that unifies correctly. 
+If multiple terms match, the type checker will report the ambiguity. 
+
+A simple use case is for `show`ing a value that has generic type. For example, this is how `show` can be defined for a list.
+```koka
+fun list/show(l: list<a>, ?show: (a) -> string): string
+  "[" ++ l.map(show).join(", ") ++ "]" 
+```
+Note the `?` prefixing the show parameter. This marks this parameter as being inferred using the name `show` at the application site.
+
+Of course we can also define more specialized versions of `show` for specific lists, and they can be used when in scope.
+```koka
+// a special show for characters -- when resolving an implicit parameter `list/show` the
+// `chars/show` will be preferred over `list/show` as the chain is shorter
+fun chars/show( cs : list<char> ) : string
+  "\"" ++ cs.map(string).join ++ "\""
+```
+
+Implicit arguments can also require other implicits, and the type checker will fill in the dependencies.
+For example, to show a list `l2: list<list<int>>` koka will fill in the implicit `show` parameter for the inner list as well.
+```koka
+l2.show
+// will be inferred as
+l2.list/show(?show=fn(l) l.list/show(?show=int/show))
+// with all of the implicit parameters eta expanded and filled in explicitly.
+```
+As a consequence of this design, implicits have no runtime machinery. We plan on measuring the impact on code size and deduplicating implicits in the future (but this is not implemented yet).
+
+Implicits are purely a compile-time feature, and are resolved during type inference at the same time as overloading is resolved. 
+However due to the stage at which they are resolved, the compiler cannot tell that you need an overloaded name to be inferred and type checked prior to a usage of that definition when trying to resolve an implicit.
+
+Therefore, implicits enforce the following rule on usage
+- Definitions used as implicit arguments should be defined prior to their usage in the file
+
+When resolving any usage of an identifier Koka follows the following rules to resolve overloading
+- If a qualified name is used, than it refers to a definition unambiguously and proceeds to resolve implicits
+- If a local variable of the correct name and type is in scope, it is given preference over other definitions
+- If the name is unique and no overloads exists, that singular definition is used and implicits are resolved
+- If the name is ambiguous, try to infer the type of the minimum number of arguments that makes the overloaded identifier uniquely unifiable and then proceed to resolve implicits
+- If the name is still ambiguous, report an ambiguity
+When proceeding to resolve implicits
+- The name of the parameter (without local qualifiers) is used to search for a definition avaiable at the call site 
+- The overloading an implicit rules are used recursively to resolve the implicits
+- Shorter chains of implicits are preferred over longer chains
+- If the compiler cannot find a unique shortest implicit chain, it will report an ambiguity
+- If the compiler cannot find a corresponding definition with the correct type it will report an error
+
+As such, overuse of static overloading or deeply nesting implicits is bad practice for the following reasons: 
+(1) It makes implicit resolution more expensive
+(2) It can make code harder to read and understand
+(3) It can result in ambiguities in the middle of an implicit chain which you have to expand manually
+
+It is best practice to:
+(1) Only overload unambiguously (i.e. with different types)
+(2) Prefer overloading where the first argument type can distinguish the definitions completely
+(3) Avoid deeply nesting generic types
+
+If you absolutely need to create an ambiguous overloaded definition that is likely to be used in a nested implicit
+there are ways to mitigate issue number (3), which has something to do with best practice (3).
+Let's suppose you have an overloaded definition for `show` on lists, because you want to show lists with each element on their own line.
+```koka
+fun nl/show(l: list<a>, ?show: (a) -> string): string
+  l.map(show).join("\n")
+```
+And then lets suppose that you have a nested list of lists and you want the outer list to be shown with each element on its own line, but the inner list to be shown with each element on the same line. This is easy
+```koka
+val l2: list<list<int>> = ...
+l2.nl/show()
+```
+Qualifying the outer show is enough in this case.
+However, let's say that you want to now overload show on integers, to pad them with a single zero if less than 10.
+```koka
+fun padded/show(i: int): string
+  if i < 10 then "0" ++ i.show else i.show
+```
+
+Well now your deeply nested list is ambiguous, and you have to manually expand it.
+```
+val l2: list<list<int>> = ...
+l2.nl/show(?show=list/show(?show=padded/show))
+```
+This is a bit of a pain. To mitigate this we can define a new value type that wraps our list of integers.
+```koka
+value struct paddedlist {inner : list<int>}
+fun padded/show(pl: paddedlist): string
+  pl.inner.show(?show=padded/show)
+```
+And now the `list<paddedlist>` using a shortest chain rule will definitely resolve to the correct definition.
+
+I hope we add newtypes & proxying to Koka to make this even cleaner and not introducing a new type at runtime.
 
 ### Named and Scoped Handlers { #sec-namedh; }
 
@@ -69,230 +186,89 @@ When creating the file the function `file` quantifies the `action` function by a
 [named-handlers]: https://github.com/koka-lang/koka/tree/master/samples/named-handlers {target='_top'}
 
 
+## Less Documented
 
-## FBIP: Functional but In-Place { #sec-fbip; }
+The following keywords or features are less well-known or documented in Koka:
 
-With [Perceus][#why-fbip] reuse analysis we can
-write algorithms that dynamically adapt to use in-place mutation when
-possible (and use copying when used persistently). Importantly,
-you can rely on this optimization happening, &eg; see
-the `match` patterns and pair them to same-sized constructors in each branch.
+### Type Qualifiers and Features
 
-This style of programming leads to a new paradigm that we call FBIP:
-"functional but in place". Just like tail-call optimization lets us
-describe loops in terms of regular function calls, reuse analysis lets us
-describe in-place mutating imperative algorithms in a purely functional
-way (and get persistence as well).
+#### Abstract Types
+`abstract` in front of a type declaration will make the type non-constructible outside the current module. 
+In addition it will not auto create the copy function or value accessors. 
+This is used in the standard libraries for external types defined by the runtime, as well as types such as `sslice` which has specific guarantees about relations between its fields that it needs to take serious responsibility for to avoid undefined behavior such as segfaults.
 
-Koka has a few keywords for guaranteeing that a function is optimized by the compiler.
+#### Coinductive Types
+Coinductively defined types have no special aspect to them at this point as far as I know other than to be reserved for functional completeness.
 
-The `fip` keyword is the most restrictive and guarantees that a function is fully optimized by the compiler to use in-place mutation when possible.
-Higher order functions, or other variables used multiple times in a `fip` function must be marked as borrowed using the `^` prefix on their name (eg. `^f`). 
-Borrowed parameters cannot be passed as owned parameters to functions or constructors, cannot be matched destructively, and cannot be returned. 
+#### Extensible Types
+Exensible types allow you to add constructors to a type from outside the type's definition.
+It is used for example in the standard library's `exception-info` type, which allows you to add additional information to an exception.
 
-The `tail` keyword guarantees that a function is tail-recursive. These functions will not use stack space.
-
-The `fbip` keyword guarantees that a function is optimized by the compiler to use in-place mutation when possible.
-However, unlike `fip`, `fbip` allows for deallocation, and also allows for non tail calls, which means these functions can use non-constant stack space.
-
-Both `fip` and `fbip` can allow for a constant amount of allocation using `fip(n)` or `fbip(n)` where `n` is the number of constructor allocations allowed.
-This allows them to be used in insertion functions for datastructures, where at least one constructor for the inserted element is necessary.
-
-Following are a few examples of the techniques of FBIP in action. 
-For more information about the restrictions for `fip` and the new keywords, see
-the recent papers: [@Lorenzen:fip;@Lorenzen:fip-t]
-
-### Tree Rebalancing
-
-As an example, consider insertion into a red-black tree [@guibas1978dichromatic]. 
-A polymorphic version of this example is part of the [``samples``][samples] directory when you have
-installed &koka; and can be loaded as ``:l`` [``samples/basic/rbtree``][rbtree].
-We define red-black trees as:
+The syntax is as follows:
 ```koka
-type color
-  Red
-  Black
+open type mytype
+  Constr1(a: int)
+  Constr2(b: string)
 
-type tree
-  Leaf
-  Node(color: color, left: tree, key: int, value: bool, right: tree)
-```
-The red-black tree has the invariant that the number of black nodes from
-the root to any of the leaves is the same, and that a red node is never a
-parent of red node. Together this ensures that the trees are always
-balanced. When inserting nodes, the invariants need to be maintained by
-rebalancing the nodes when needed. Okasaki's algorithm [@Okasaki:rbtree]
-implements this elegantly and functionally:
-```koka
-fbip(1) fun balance-left( l : tree, k : int, v : bool, r : tree ): tree
-  match l
-    Node(_, Node(Red, lx, kx, vx, rx), ky, vy, ry)
-      -> Node(Red, Node(Black, lx, kx, vx, rx), ky, vy, Node(Black, ry, k, v, r))
-    ...
-
-fbip(1) fun ins( t : tree, k : int, v : bool ): tree  
-  match t
-    Leaf -> Node(Red, Leaf, k, v, Leaf)
-    Node(Red, l, kx, vx, r)
-      -> if k < kx then Node(Red, ins(l, k, v), kx, vx, r)
-         ...
-    Node(Black, l, kx, vx, r)
-      -> if k < kx && is-red(l) then balance-left(ins(l,k,v), kx, vx, r)
-         ...
+extend type mytype
+  Constr3(c: float64)
 ```
 
+Note that for extensible types, the extended type must have public visibility `pub` or you will run into a known bug. Also note that pattern matching
+will no longer be exhaustive so you must have `exn` in the effect row when pattern matching on an extensible type if there is no sensible default or catch all case.
 
-The &koka; compiler will inline the `balance-left` function. At that point,
-every matched `Node` constructor in the `ins` function has a corresponding `Node` allocation --
-if we consider all branches we can see that we either match one `Node`
-and allocate one, or we match three nodes deep and allocate three. Every
-`Node` is actually reused in the fast path without doing any allocations!
-When studying the generated code, we can see the Perceus assigns the
-fields in the nodes in the fast path _in-place_ much like the
-usual non-persistent rebalancing algorithm in C would do.
+There is still work to do to make extensible types work well with the rest of the language, in particular with implicits and overloading.
 
-Essentially this means that for a unique tree, the purely functional
-algorithm above adapts at runtime to an in-place mutating re-balancing
-algorithm (without any further allocation). Moreover, if we use the tree
-_persistently_ [@Okasaki:purefun], and the tree is shared or has
-shared parts, the algorithm adapts to copying exactly the shared _spine_
-of the tree (and no more), while still rebalancing in place for any
-unshared parts.
+### Parameters
+All parameters to top level functions must be named.
+As such, arguments can be passed named or in order.
+
+Additionally parameters can be marked as borrowed by prefixing the name with the caret `^`.
+
+This can be useful to avoid unnecessary reference counting on parameters that you know will be live for the duration of the function call (such as higher order function parameters, including implicits).
+However, it will mean that the parameter including any variables captured under a lambda will not be freed as early as it could.
+For data structures that will be destructed using a match statement, it is almost always better to rely on the default owned semantics, which will let Koka reuse the memory in place.
 
 
-### Morris Traversal
 
-As another example of FBIP, consider mapping a function `f` over
-all elements in a binary tree in-order as shown in the `tmap-inorder` example:
+### Return Statement
 
-```
-type tree
-  Tip
-  Bin( left: tree, value : int, right: tree )
 
-fbip fun tmap-inorder( t : tree, f : int -> int ) : tree
-  match t
-    Bin(l,x,r) -> Bin( l.tmap-inorder(f), f(x), r.tmap-inorder(f) )
-    Tip        -> Tip
-```
+### Divergence Inference
 
-This is already quite efficient as all the `Bin` and `Tip` nodes are
-reused in-place when `t` is unique. However, the `tmap` function is not
-tail-recursive and thus uses as much stack space as the depth of the
-tree.
 
-````cpp {.aside}
-void inorder( tree* root, void (*f)(tree* t) ) {
-  tree* cursor = root;
-  while (cursor != NULL /* Tip */) {
-    if (cursor->left == NULL) {
-      // no left tree, go down the right
-      f(cursor->value);
-      cursor = cursor->right;
-    } else {
-      // has a left tree
-      tree* pre = cursor->left;  // find the predecessor
-      while(pre->right != NULL && pre->right != cursor) {
-        pre = pre->right;
-      }
-      if (pre->right == NULL) {
-        // first visit, remember to visit right tree
-        pre->right = cursor;
-        cursor = cursor->left;
-      } else {
-        // already set, restore
-        f(cursor->value);
-        pre->right = NULL;
-        cursor = cursor->right;
-      }
-    }
-  }
-}
-````
+### Function Modifiers
 
-In 1968, Knuth posed the problem of visiting a tree in-order while using
-no extra stack- or heap space [@Knuth:aocp1] (For readers not familiar
-with the problem it might be fun to try this in your favorite imperative
-language first and see that it is not easy to do). Since then, numerous
-solutions have appeared in the literature. A particularly elegant
-solution was proposed by @Morris:tree. This is an in-place mutating
-algorithm that swaps pointers in the tree to "remember" which parts are
-unvisited. It is beyond this tutorial to give a full explanation, but a C
-implementation is shown here on the side. The traversal
-essentially uses a _right-threaded_ tree to keep track of which nodes to
-visit. The algorithm is subtle, though. Since it transforms the tree into
-an intermediate graph, we need to state invariants over the so-called
-_Morris loops_ [@Mateti:morris] to prove its correctness.
+### Vectors
 
-We can derive a functional and more intuitive solution using the FBIP
-technique. We start by defining an explicit _visitor_ data structure
-that keeps track of which parts of the tree we still need to visit. In
-&koka; we define this data type as `:visitor`:
-```
-type visitor
-  Done
-  BinR( right:tree, value : int, visit : visitor )
-  BinL( left:tree, value : int, visit : visitor )
-```
+### Implicits Versus Effects
 
-(As an aside,
-Conor McBride [@Mcbride:derivative] describes how we can
-generically derive a _zipper_ [@Huet:zipper] visitor for any
-recursive type $\mu x. F$ as a list of the derivative of that type,
-namely $@list (\pdv{x} F\mid_{x =\mu x.F})$.
-In our case, the algebraic representation of the inductive `:tree`
-type is $\mu x. 1 + x\times int\times x  \,\cong\, \mu x. 1 + x^2\times int$.
-Calculating the derivative $@list (\pdv{x} (1 + x^2\times int) \mid_{x = tree})$
-and by further simplification,
-we get $\mu x. 1 + (tree\times int\times x) + (tree\times int\times x)$,
-which corresponds exactly to our `:visitor` data type.)
+### Matching
 
-We also keep track of which `:direction` in the tree
-we are going, either `Up` or `Down` the tree.
+### Linear Effects
 
-```
-type direction
-  Up
-  Down
-```
+## Best Practices
+- utf8
+- tests
+- vectors
+- implicits versus effects
+- formatting
 
-We start our traversal by going downward into the tree with an empty
-visitor, expressed as `tmap(f, t, Done, Down)`:
+## Some Rough Edges
 
-```
-fip fun tmap( f : int -> int, t : tree, visit : visitor, d : direction )
-  match d
-    Down -> match t     // going down a left spine
-      Bin(l,x,r) -> tmap(f,l,BinR(r,x,visit),Down) // A
-      Tip        -> tmap(f,Tip,visit,Up)           // B
-    Up -> match visit   // go up through the visitor
-      Done        -> t                             // C
-      BinR(r,x,v) -> tmap(f,r,BinL(t,f(x),v),Down) // D
-      BinL(l,x,v) -> tmap(f,Bin(l,x,t),v,Up)       // E
-```
+### Partial Type Checking
 
-The key idea is that we
-are either `Done` (`C`), or, on going downward in a left spine we
-remember all the right trees we still need to visit in a `BinR` (`A`) or,
-going upward again (`B`), we remember the left tree that we just
-constructed as a `BinL` while visiting right trees (`D`). When we come
-back up (`E`), we restore the original tree with the result values. Note
-that we apply the function `f` to the saved value in branch `D` (as we
-visit _in-order_), but the functional implementation makes it easy to
-specify a _pre-order_ traversal by applying `f` in branch `A`, or a
-_post-order_ traversal by applying `f` in branch `E`.
+### Standard Library
 
-Looking at each branch we can see that each `Bin` matches up with a
-`BinR`, each `BinR` with a `BinL`, and finally each `BinL` with a `Bin`.
-Since they all have the same size, if the tree is unique, each branch
-updates the tree nodes _in-place_ at runtime without any allocation,
-where the `:visitor` structure is effectively overlaid over the tree
-nodes while traversing the tree. Since all `tmap` calls are tail calls,
-this also compiles to a tight loop and thus needs no extra stack- or heap
-space.
+#### Documentation
 
-Finally, just like with re-balancing tree insertion, the algorithm as
-specified is still purely functional: it uses in-place updating when a
-unique tree is passed, but it also adapts gracefully to the persistent
-case where the input tree is shared, or where parts of the input tree are
-shared, making a single copy of those parts of the tree.
+#### Testing Library
+
+#### Red Black Tree
+
+#### List / Ssslice
+
+#### Tuple accessors on parameters
+
+### Conditional Effects
+
