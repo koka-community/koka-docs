@@ -138,6 +138,14 @@ However, this technique will not work for mutual recursion or any other form of 
 
 One solution for these cases is to internally name the mutually recursive functions name and then expose a function that wraps the internal function and with a call to `pretend-no-div` from the `std/core/undiv` module (e.g. `pretend-no-div(fn() internal())`). This will remove the `div` effect without removing any other effects.
 
+### Final Effects
+You can use final ctl to denote that the effect operation never resumes. 
+
+```koka
+pub effect fail<b>
+  final ctl fail(info: b) : a
+```
+
 ### Linear Effects
 Linear effects are effects whose handlers are always guaranteed to be used in a linear fashion.
 This severely restricts what kinds of handlers can be implemented for those effects (including disallowing calls to any potentially other non-linear effect within the handler operations - for example `exn`).
