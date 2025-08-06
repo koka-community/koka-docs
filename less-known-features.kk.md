@@ -18,8 +18,8 @@ To provide arguments simply use a `#` followed by the argument number. For examp
 
 ```koka
 extern add(x: int32, y: int32): int32
-  c inline "($1 + $2)"
-  js inline "$1 + $2"
+  c inline "(#1 + #2)"
+  js inline "#1 + #2"
 ```
 
 To delegate to a function defined already in the target language you can omit the `inline` keyword and provide the function name:
