@@ -1,6 +1,6 @@
 
 Title         : The &koka; Language Doc Updates
-Title Note    : [(Daan Leijen, Koka-Community &date;)]{font-size:75%}
+Title Note    : [(Koka-Community &date;)]{font-size:75%}
 Heading Base  : 1
 Heading Depth : 3
 Toc Depth     : 3
