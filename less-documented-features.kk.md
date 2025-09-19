@@ -14,7 +14,7 @@ This is used in the standard libraries for external types defined by the runtime
 Coinductively defined types have no special aspect to them at this point as far as I know other than to be reserved for functional completeness.
 
 #### Extensible Types
-Exensible types allow you to add constructors to a type from outside the type's definition.
+Extensible types allow you to add constructors to a type from outside the type's definition.
 It is used for example in the standard library's `exception-info` type, which allows you to add additional information to an exception.
 
 The syntax is as follows:
