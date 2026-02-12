@@ -85,15 +85,19 @@ Implicits are purely a compile-time feature, and are resolved during type infere
 However due to the stage at which they are resolved, the compiler cannot tell that you need an overloaded name to be inferred and type checked prior to a usage of that definition when trying to resolve an implicit.
 
 Therefore, implicits enforce the following rule on usage
+
 - Definitions used as implicit arguments should be defined prior to their usage in the file
 
 When resolving any usage of an identifier Koka follows the following rules to resolve overloading
+
 - If a qualified name is used, than it refers to a definition unambiguously and proceeds to resolve implicits
 - If a local variable of the correct name and type is in scope, it is given preference over other definitions
 - If the name is unique and no overloads exists, that singular definition is used and implicits are resolved
 - If the name is ambiguous, try to infer the type of the minimum number of arguments that makes the overloaded identifier uniquely unifiable and then proceed to resolve implicits
 - If the name is still ambiguous, report an ambiguity
+
 When proceeding to resolve implicits
+
 - The name of the parameter (without local qualifiers) is used to search for a definition avaiable at the call site 
 - The overloading an implicit rules are used recursively to resolve the implicits
 - Shorter chains of implicits are preferred over longer chains
